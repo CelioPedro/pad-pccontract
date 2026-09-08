@@ -1,5 +1,5 @@
 #property copyright "PCCONTRACT"
-#property version   "1.04"
+#property version   "1.05"
 
 #include <Controls\Dialog.mqh>
 #include <Controls\Button.mqh>
@@ -35,13 +35,14 @@ private:
    CButton m_btnTrailing;
    
    CLabel  m_lblProfit;
-   CLabel  m_lblRisk;
 
    CTrade  m_trade;       
    bool    m_trailingActive;
+   
+   long    m_lastHover;
 
 public:
-   CPcContractPanel() : m_trailingActive(false) {}
+   CPcContractPanel() : m_trailingActive(false), m_lastHover(0) {}
    
    virtual bool Create(const long chart, const string name, const int subwin, const int x1, const int y1, const int x2, const int y2);
    
@@ -61,9 +62,14 @@ public:
    void OnClickTrailing();
    
    void UpdateProfit();
-   void UpdateRisk();
    void CheckGlobalProfit();
    void CheckTrailing();
+   
+   void CheckHover(int x, int y);
+   void UpdateHoverPreview();
+   void DrawPreviewLines(long type);
+   void ClearPreviewLines();
+   void DrawHLine(string name, double price, color clr, string text);
 };
 
 void CPcContractPanel::InitTrade()
@@ -88,11 +94,6 @@ bool CPcContractPanel::Create(const long chart, const string name, const int sub
    if(!m_editLot.Create(chart, name+"_Lot", subwin, 120, 55, 180, 85)) return false;
    m_editLot.Text("1.0");
    Add(m_editLot);
-
-   // Rótulo de Risco (Abaixo do Lote)
-   if(!m_lblRisk.Create(chart, name+"_lblRisk", subwin, 115, 88, 185, 105)) return false;
-   m_lblRisk.Text("Risco: 0.00");
-   Add(m_lblRisk);
 
    // Botão de Compra
    if(!m_btnBuy.Create(chart, name+"_Buy", subwin, 190, 40, 280, 100)) return false;
@@ -292,33 +293,6 @@ void CPcContractPanel::UpdateProfit()
    m_lblProfit.Text("Lucro Flutuante: " + DoubleToString(profit, 2));
 }
 
-//--- Atualizar Exibição de Risco Financeiro
-void CPcContractPanel::UpdateRisk()
-{
-   double lot = StringToDouble(m_editLot.Text());
-   double sl_points = StringToDouble(m_editSL.Text());
-   
-   if(lot > 0 && sl_points > 0)
-   {
-      double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-      double tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-      double tick_value = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-      
-      if(tick_size > 0)
-      {
-         double price_dist = sl_points * point;
-         double risk_money = (price_dist / tick_size) * tick_value * lot;
-         
-         string currency = AccountInfoString(ACCOUNT_CURRENCY);
-         m_lblRisk.Text("Risco: " + DoubleToString(risk_money, 2) + " " + currency);
-      }
-   }
-   else
-   {
-      m_lblRisk.Text("Risco: 0.00");
-   }
-}
-
 //--- Checar Meta Global
 void CPcContractPanel::CheckGlobalProfit()
 {
@@ -412,11 +386,126 @@ void CPcContractPanel::CheckTrailing()
    }
 }
 
+//--- Desenho e Hover
+void CPcContractPanel::CheckHover(int x, int y)
+{
+   // Coordenadas relativas ao client area. CWnd Left/Right são relativas à janela pai
+   // CAppDialog mapeia os eventos se o mouse estiver sobre o painel.
+   bool hover_buy = (x >= m_btnBuy.Left() && x <= m_btnBuy.Right() && y >= m_btnBuy.Top() && y <= m_btnBuy.Bottom());
+   bool hover_sell = (x >= m_btnSell.Left() && x <= m_btnSell.Right() && y >= m_btnSell.Top() && y <= m_btnSell.Bottom());
+   
+   long new_hover = 0;
+   if(hover_buy) new_hover = POSITION_TYPE_BUY;
+   else if(hover_sell) new_hover = POSITION_TYPE_SELL;
+   
+   if(new_hover != m_lastHover)
+   {
+      m_lastHover = new_hover;
+      if(m_lastHover == 0)
+         ClearPreviewLines();
+      else
+         DrawPreviewLines(m_lastHover);
+   }
+}
+
+void CPcContractPanel::UpdateHoverPreview()
+{
+   if(m_lastHover != 0)
+      DrawPreviewLines(m_lastHover);
+}
+
+void CPcContractPanel::DrawHLine(string name, double price, color clr, string text)
+{
+   if(ObjectFind(0, name) < 0)
+   {
+      ObjectCreate(0, name, OBJ_HLINE, 0, 0, price);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+      ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_DASH);
+      ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
+      ObjectSetInteger(0, name, OBJPROP_BACK, false);
+      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+      ObjectSetString(0, name, OBJPROP_TEXT, text);
+      ObjectSetInteger(0, name, OBJPROP_TOOLTIP, text);
+   }
+   else
+   {
+      ObjectMove(0, name, 0, 0, price);
+      ObjectSetString(0, name, OBJPROP_TEXT, text);
+   }
+}
+
+void CPcContractPanel::DrawPreviewLines(long type)
+{
+   double lot = StringToDouble(m_editLot.Text());
+   double sl_points = StringToDouble(m_editSL.Text());
+   double tp_points = StringToDouble(m_editTP.Text());
+   
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol, tick)) return;
+   
+   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   double tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   double tick_value = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   string currency = AccountInfoString(ACCOUNT_CURRENCY);
+   
+   double open_price = (type == POSITION_TYPE_BUY) ? tick.ask : tick.bid;
+   double sl_price = 0, tp_price = 0;
+   
+   string side = (type == POSITION_TYPE_BUY) ? "BUY" : "SELL";
+   color entry_clr = (type == POSITION_TYPE_BUY) ? clrDodgerBlue : clrOrange;
+   
+   if(type == POSITION_TYPE_BUY)
+   {
+      sl_price = (sl_points > 0) ? open_price - (sl_points * point) : 0;
+      tp_price = (tp_points > 0) ? open_price + (tp_points * point) : 0;
+   }
+   else
+   {
+      sl_price = (sl_points > 0) ? open_price + (sl_points * point) : 0;
+      tp_price = (tp_points > 0) ? open_price - (tp_points * point) : 0;
+   }
+   
+   double risk_money = (sl_points > 0 && tick_size > 0) ? ((sl_points * point) / tick_size) * tick_value * lot : 0;
+   double profit_money = (tp_points > 0 && tick_size > 0) ? ((tp_points * point) / tick_size) * tick_value * lot : 0;
+   
+   string entry_text = StringFormat("%s %.2f lots", side, lot);
+   DrawHLine("PREVIEW_ENTRY", open_price, entry_clr, entry_text);
+   
+   if(sl_points > 0) 
+   {
+      string sl_text = StringFormat("SL: -%.2f %s (%.0f pts)", risk_money, currency, sl_points);
+      DrawHLine("PREVIEW_SL", sl_price, clrRed, sl_text);
+   }
+   else ObjectDelete(0, "PREVIEW_SL");
+   
+   if(tp_points > 0) 
+   {
+      string tp_text = StringFormat("TP: +%.2f %s (%.0f pts)", profit_money, currency, tp_points);
+      DrawHLine("PREVIEW_TP", tp_price, clrLimeGreen, tp_text);
+   }
+   else ObjectDelete(0, "PREVIEW_TP");
+   
+   ChartRedraw();
+}
+
+void CPcContractPanel::ClearPreviewLines()
+{
+   bool changed = false;
+   if(ObjectFind(0, "PREVIEW_ENTRY") >= 0) { ObjectDelete(0, "PREVIEW_ENTRY"); changed = true; }
+   if(ObjectFind(0, "PREVIEW_SL") >= 0) { ObjectDelete(0, "PREVIEW_SL"); changed = true; }
+   if(ObjectFind(0, "PREVIEW_TP") >= 0) { ObjectDelete(0, "PREVIEW_TP"); changed = true; }
+   
+   if(changed) ChartRedraw();
+}
+
 //--- Instanciando
 CPcContractPanel ExtPanel;
 
 int OnInit()
 {
+   ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);
+   ChartSetInteger(0, CHART_SHOW_OBJECT_DESCR, true);
+   
    ExtPanel.InitTrade();
    
    if(!ExtPanel.Create(0, "PCCONTRACT", 0, 50, 50, 350, 380))
@@ -430,6 +519,7 @@ int OnInit()
 
 void OnDeinit(const int reason)
 {
+   ExtPanel.ClearPreviewLines();
    EventKillTimer();
    ExtPanel.Destroy(reason);
 }
@@ -437,16 +527,23 @@ void OnDeinit(const int reason)
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
    ExtPanel.ChartEvent(id, lparam, dparam, sparam);
+   
+   if(id == CHARTEVENT_MOUSE_MOVE)
+   {
+      // Em CAppDialog, os cliques e mouses são relativos ao cliente ou ao gráfico.
+      // CWnd (base) usa coordenadas absolutas para seus Left() e Right() se estiver visível.
+      ExtPanel.CheckHover((int)lparam, (int)dparam);
+   }
 }
 
 void OnTimer()
 {
    ExtPanel.UpdateProfit();
-   ExtPanel.UpdateRisk();
 }
 
 void OnTick()
 {
    ExtPanel.CheckTrailing();
    ExtPanel.CheckGlobalProfit();
+   ExtPanel.UpdateHoverPreview();
 }
