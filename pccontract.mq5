@@ -42,7 +42,7 @@ private:
    long    m_lastHover;
 
 public:
-   CPcContractPanel() : m_trailingActive(false), m_lastHover(0) {}
+   CPcContractPanel() : m_trailingActive(false), m_lastHover(-1) {}
    
    virtual bool Create(const long chart, const string name, const int subwin, const int x1, const int y1, const int x2, const int y2);
    
@@ -394,14 +394,14 @@ void CPcContractPanel::CheckHover(int x, int y)
    bool hover_buy = (x >= m_btnBuy.Left() && x <= m_btnBuy.Right() && y >= m_btnBuy.Top() && y <= m_btnBuy.Bottom());
    bool hover_sell = (x >= m_btnSell.Left() && x <= m_btnSell.Right() && y >= m_btnSell.Top() && y <= m_btnSell.Bottom());
    
-   long new_hover = 0;
+   long new_hover = -1;
    if(hover_buy) new_hover = POSITION_TYPE_BUY;
    else if(hover_sell) new_hover = POSITION_TYPE_SELL;
    
    if(new_hover != m_lastHover)
    {
       m_lastHover = new_hover;
-      if(m_lastHover == 0)
+      if(m_lastHover == -1)
          ClearPreviewLines();
       else
          DrawPreviewLines(m_lastHover);
@@ -410,7 +410,7 @@ void CPcContractPanel::CheckHover(int x, int y)
 
 void CPcContractPanel::UpdateHoverPreview()
 {
-   if(m_lastHover != 0)
+   if(m_lastHover != -1)
       DrawPreviewLines(m_lastHover);
 }
 
