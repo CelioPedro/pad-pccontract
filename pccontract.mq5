@@ -35,6 +35,7 @@ private:
    CButton m_btnTrailing;
    
    CLabel  m_lblProfit;
+   CLabel  m_lblRisk;
 
    CTrade  m_trade;       
    bool    m_trailingActive;
@@ -60,6 +61,7 @@ public:
    void OnClickTrailing();
    
    void UpdateProfit();
+   void UpdateRisk();
    void CheckGlobalProfit();
    void CheckTrailing();
 };
@@ -86,6 +88,11 @@ bool CPcContractPanel::Create(const long chart, const string name, const int sub
    if(!m_editLot.Create(chart, name+"_Lot", subwin, 120, 55, 180, 85)) return false;
    m_editLot.Text("1.0");
    Add(m_editLot);
+
+   // Rótulo de Risco (Abaixo do Lote)
+   if(!m_lblRisk.Create(chart, name+"_lblRisk", subwin, 115, 88, 185, 105)) return false;
+   m_lblRisk.Text("Risco: 0.00");
+   Add(m_lblRisk);
 
    // Botão de Compra
    if(!m_btnBuy.Create(chart, name+"_Buy", subwin, 190, 40, 280, 100)) return false;
@@ -285,6 +292,33 @@ void CPcContractPanel::UpdateProfit()
    m_lblProfit.Text("Lucro Flutuante: " + DoubleToString(profit, 2));
 }
 
+//--- Atualizar Exibição de Risco Financeiro
+void CPcContractPanel::UpdateRisk()
+{
+   double lot = StringToDouble(m_editLot.Text());
+   double sl_points = StringToDouble(m_editSL.Text());
+   
+   if(lot > 0 && sl_points > 0)
+   {
+      double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+      double tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      double tick_value = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      
+      if(tick_size > 0)
+      {
+         double price_dist = sl_points * point;
+         double risk_money = (price_dist / tick_size) * tick_value * lot;
+         
+         string currency = AccountInfoString(ACCOUNT_CURRENCY);
+         m_lblRisk.Text("Risco: " + DoubleToString(risk_money, 2) + " " + currency);
+      }
+   }
+   else
+   {
+      m_lblRisk.Text("Risco: 0.00");
+   }
+}
+
 //--- Checar Meta Global
 void CPcContractPanel::CheckGlobalProfit()
 {
@@ -408,6 +442,7 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
 void OnTimer()
 {
    ExtPanel.UpdateProfit();
+   ExtPanel.UpdateRisk();
 }
 
 void OnTick()
