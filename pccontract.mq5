@@ -11,6 +11,8 @@
 //--- Parâmetros de Entrada
 input group "Configurações Gerais"
 input ulong  InpMagicNumber = 123456;     // Magic Number
+input double InpTargetProfit = 500.0;     // Meta de Lucro Global ($) [0 = Desativar]
+input double InpMaxLoss = -200.0;         // Limite de Perda Global ($) [0 = Desativar]
 
 //--- Estrutura do Painel PCCONTRACT
 class CPcContractPanel : public CAppDialog
@@ -44,6 +46,7 @@ public:
    void OnClickSell();
    void OnClickCloseAll();
    void UpdateProfit();
+   void CheckGlobalProfit();
 };
 
 void CPcContractPanel::InitTrade()
@@ -190,6 +193,40 @@ void CPcContractPanel::UpdateProfit()
    m_lblProfit.Text("Lucro Flutuante: " + DoubleToString(profit, 2));
 }
 
+//--- Checar Meta e Limite de Perda Global
+void CPcContractPanel::CheckGlobalProfit()
+{
+   double profit = 0.0;
+   CPositionInfo pos;
+   bool has_positions = false;
+   
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      if(pos.SelectByIndex(i))
+      {
+         if(pos.Symbol() == _Symbol && pos.Magic() == InpMagicNumber)
+         {
+            profit += pos.Profit() + pos.Swap() + pos.Commission();
+            has_positions = true;
+         }
+      }
+   }
+   
+   if(has_positions)
+   {
+      if(InpTargetProfit > 0 && profit >= InpTargetProfit)
+      {
+         Print("Meta de lucro atingida! Fechando todas as ordens.");
+         OnClickCloseAll();
+      }
+      else if(InpMaxLoss < 0 && profit <= InpMaxLoss)
+      {
+         Print("Limite de perda atingido! Fechando todas as ordens.");
+         OnClickCloseAll();
+      }
+   }
+}
+
 //--- Instanciando
 CPcContractPanel ExtPanel;
 
@@ -220,4 +257,9 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
 void OnTimer()
 {
    ExtPanel.UpdateProfit();
+}
+
+void OnTick()
+{
+   ExtPanel.CheckGlobalProfit();
 }
