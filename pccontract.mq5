@@ -1,5 +1,5 @@
 #property copyright "PCCONTRACT"
-#property version   "1.03"
+#property version   "1.04"
 
 #include <Controls\Dialog.mqh>
 #include <Controls\Button.mqh>
@@ -13,14 +13,6 @@ input group "Configurações Gerais"
 input ulong  InpMagicNumber = 123456;     // Magic Number
 input double InpTargetProfit = 500.0;     // Meta de Lucro Global ($) [0 = Desativar]
 input double InpMaxLoss = -200.0;         // Limite de Perda Global ($) [0 = Desativar]
-
-input group "Breakeven"
-input int    InpBreakevenActivation = 100;// Ativar BE com lucro de (pontos) [0 = Desativar]
-input int    InpBreakevenOffset = 10;     // Garantir (pontos) no zero-a-zero
-
-input group "Trailing Stop"
-input int    InpTrailingStart = 150;      // Ativar Trailing com lucro de (pontos) [0 = Desativar]
-input int    InpTrailingDistance = 100;   // Distância do Trailing (pontos)
 
 //--- Estrutura do Painel PCCONTRACT
 class CPcContractPanel : public CAppDialog
@@ -36,26 +28,40 @@ private:
    CEdit   m_editTP;
    
    CButton m_btnCloseAll;
+   CButton m_btnBreakeven;
+   
+   CLabel  m_lblTrDist;
+   CEdit   m_editTrDist;
+   CButton m_btnTrailing;
+   
    CLabel  m_lblProfit;
 
    CTrade  m_trade;       
+   bool    m_trailingActive;
 
 public:
+   CPcContractPanel() : m_trailingActive(false) {}
+   
    virtual bool Create(const long chart, const string name, const int subwin, const int x1, const int y1, const int x2, const int y2);
    
    EVENT_MAP_BEGIN(CPcContractPanel)
       ON_EVENT(ON_CLICK, m_btnBuy, OnClickBuy)
       ON_EVENT(ON_CLICK, m_btnSell, OnClickSell)
       ON_EVENT(ON_CLICK, m_btnCloseAll, OnClickCloseAll)
+      ON_EVENT(ON_CLICK, m_btnBreakeven, OnClickBreakeven)
+      ON_EVENT(ON_CLICK, m_btnTrailing, OnClickTrailing)
    EVENT_MAP_END(CAppDialog)
 
    void InitTrade();
    void OnClickBuy();
    void OnClickSell();
    void OnClickCloseAll();
+   void OnClickBreakeven();
+   void OnClickTrailing();
+   
    void UpdateProfit();
    void CheckGlobalProfit();
-   void CheckTrailingAndBreakeven();
+   void CheckTrailing();
 };
 
 void CPcContractPanel::InitTrade()
@@ -78,7 +84,7 @@ bool CPcContractPanel::Create(const long chart, const string name, const int sub
 
    // Caixa de Lote
    if(!m_editLot.Create(chart, name+"_Lot", subwin, 120, 55, 180, 85)) return false;
-   m_editLot.Text("1.0"); // Padrão ajustado para B3
+   m_editLot.Text("1.0");
    Add(m_editLot);
 
    // Botão de Compra
@@ -95,7 +101,7 @@ bool CPcContractPanel::Create(const long chart, const string name, const int sub
 
    // Caixa de Stop Loss
    if(!m_editSL.Create(chart, name+"_SL", subwin, 20, 125, 110, 145)) return false;
-   m_editSL.Text("1000"); // Padrão maior para B3
+   m_editSL.Text("1000");
    Add(m_editSL);
 
    // Rótulo Take Profit
@@ -105,7 +111,7 @@ bool CPcContractPanel::Create(const long chart, const string name, const int sub
 
    // Caixa de Take Profit
    if(!m_editTP.Create(chart, name+"_TP", subwin, 190, 125, 280, 145)) return false;
-   m_editTP.Text("2000"); // Padrão maior para B3
+   m_editTP.Text("2000");
    Add(m_editTP);
 
    // Botão Fechar Tudo
@@ -115,8 +121,31 @@ bool CPcContractPanel::Create(const long chart, const string name, const int sub
    m_btnCloseAll.Color(clrWhite);
    Add(m_btnCloseAll);
 
+   // Botão Breakeven (Ação Direta)
+   if(!m_btnBreakeven.Create(chart, name+"_BE", subwin, 20, 195, 280, 225)) return false;
+   m_btnBreakeven.Text("SET BREAKEVEN");
+   m_btnBreakeven.ColorBackground(clrDodgerBlue);
+   m_btnBreakeven.Color(clrWhite);
+   Add(m_btnBreakeven);
+
+   // Trailing Stop Label e Edit
+   if(!m_lblTrDist.Create(chart, name+"_lblTr", subwin, 20, 235, 110, 250)) return false;
+   m_lblTrDist.Text("Trailing Pts:");
+   Add(m_lblTrDist);
+
+   if(!m_editTrDist.Create(chart, name+"_TrDist", subwin, 20, 250, 100, 275)) return false;
+   m_editTrDist.Text("1500");
+   Add(m_editTrDist);
+
+   // Trailing Toggle Button
+   if(!m_btnTrailing.Create(chart, name+"_Trailing", subwin, 115, 240, 280, 275)) return false;
+   m_btnTrailing.Text("TRAILING: OFF");
+   m_btnTrailing.ColorBackground(clrGray);
+   m_btnTrailing.Color(clrWhite);
+   Add(m_btnTrailing);
+
    // Rótulo de Lucro
-   if(!m_lblProfit.Create(chart, name+"_lblProfit", subwin, 20, 195, 280, 215)) return false;
+   if(!m_lblProfit.Create(chart, name+"_lblProfit", subwin, 20, 290, 280, 310)) return false;
    m_lblProfit.Text("Lucro Flutuante: 0.00");
    Add(m_lblProfit);
 
@@ -141,9 +170,7 @@ void CPcContractPanel::OnClickBuy()
    double tp = (tp_points > 0) ? NormalizeDouble(ask + (tp_points * point), digits) : 0;
    
    if(!m_trade.Buy(lot, _Symbol, ask, sl, tp))
-   {
       Print("Erro BUY: ", m_trade.ResultRetcode(), " - ", m_trade.ResultRetcodeDescription());
-   }
 }
 
 void CPcContractPanel::OnClickSell()
@@ -163,9 +190,7 @@ void CPcContractPanel::OnClickSell()
    double tp = (tp_points > 0) ? NormalizeDouble(bid - (tp_points * point), digits) : 0;
    
    if(!m_trade.Sell(lot, _Symbol, bid, sl, tp))
-   {
       Print("Erro SELL: ", m_trade.ResultRetcode(), " - ", m_trade.ResultRetcodeDescription());
-   }
 }
 
 //--- Fechar Tudo
@@ -177,10 +202,70 @@ void CPcContractPanel::OnClickCloseAll()
       if(pos.SelectByIndex(i))
       {
          if(pos.Symbol() == _Symbol && pos.Magic() == InpMagicNumber)
-         {
             m_trade.PositionClose(pos.Ticket());
+      }
+   }
+}
+
+//--- Botão Set Breakeven (Ação Instantânea)
+void CPcContractPanel::OnClickBreakeven()
+{
+   CPositionInfo pos;
+   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+   
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      if(pos.SelectByIndex(i))
+      {
+         if(pos.Symbol() == _Symbol && pos.Magic() == InpMagicNumber)
+         {
+            double open_price = pos.PriceOpen();
+            double sl = pos.StopLoss();
+            double tp = pos.TakeProfit();
+            long type = pos.PositionType();
+            
+            double current_price = (type == POSITION_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+            
+            bool modify = false;
+            double new_sl = sl;
+            
+            if(type == POSITION_TYPE_BUY)
+            {
+               if(current_price > open_price && sl < open_price)
+               {
+                  new_sl = NormalizeDouble(open_price, digits);
+                  modify = true;
+               }
+            }
+            else if(type == POSITION_TYPE_SELL)
+            {
+               if(current_price < open_price && (sl > open_price || sl == 0))
+               {
+                  new_sl = NormalizeDouble(open_price, digits);
+                  modify = true;
+               }
+            }
+            
+            if(modify) m_trade.PositionModify(pos.Ticket(), new_sl, tp);
          }
       }
+   }
+}
+
+//--- Botão Trailing Toggle
+void CPcContractPanel::OnClickTrailing()
+{
+   m_trailingActive = !m_trailingActive;
+   if(m_trailingActive)
+   {
+      m_btnTrailing.Text("TRAILING: ON");
+      m_btnTrailing.ColorBackground(clrSeaGreen);
+   }
+   else
+   {
+      m_btnTrailing.Text("TRAILING: OFF");
+      m_btnTrailing.ColorBackground(clrGray);
    }
 }
 
@@ -194,15 +279,13 @@ void CPcContractPanel::UpdateProfit()
       if(pos.SelectByIndex(i))
       {
          if(pos.Symbol() == _Symbol && pos.Magic() == InpMagicNumber)
-         {
             profit += pos.Profit() + pos.Swap() + pos.Commission();
-         }
       }
    }
    m_lblProfit.Text("Lucro Flutuante: " + DoubleToString(profit, 2));
 }
 
-//--- Checar Meta e Limite de Perda Global
+//--- Checar Meta Global
 void CPcContractPanel::CheckGlobalProfit()
 {
    double profit = 0.0;
@@ -225,21 +308,24 @@ void CPcContractPanel::CheckGlobalProfit()
    {
       if(InpTargetProfit > 0 && profit >= InpTargetProfit)
       {
-         Print("Meta de lucro atingida! Fechando todas as ordens.");
+         Print("Meta atingida!");
          OnClickCloseAll();
       }
       else if(InpMaxLoss < 0 && profit <= InpMaxLoss)
       {
-         Print("Limite de perda atingido! Fechando todas as ordens.");
+         Print("Stop atingido!");
          OnClickCloseAll();
       }
    }
 }
 
-//--- Lógica de Trailing Stop e Breakeven
-void CPcContractPanel::CheckTrailingAndBreakeven()
+//--- Lógica de Trailing Ativo
+void CPcContractPanel::CheckTrailing()
 {
-   if(InpBreakevenActivation <= 0 && InpTrailingStart <= 0) return;
+   if(!m_trailingActive) return;
+   
+   double tr_dist_points = StringToDouble(m_editTrDist.Text());
+   if(tr_dist_points <= 0) return;
    
    CPositionInfo pos;
    MqlTick tick;
@@ -248,11 +334,10 @@ void CPcContractPanel::CheckTrailingAndBreakeven()
    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
    int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
    
-   // Calcular distância mínima permitida pela corretora
    int stoplevel = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
    int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
    int min_dist_points = MathMax(stoplevel, spread * 2);
-   if(min_dist_points < 50) min_dist_points = 50; // Margem de segurança mínima
+   if(min_dist_points < 50) min_dist_points = 50;
    double min_dist = min_dist_points * point;
    
    for(int i = PositionsTotal() - 1; i >= 0; i--)
@@ -261,7 +346,6 @@ void CPcContractPanel::CheckTrailingAndBreakeven()
       {
          if(pos.Symbol() == _Symbol && pos.Magic() == InpMagicNumber)
          {
-            double open_price = pos.PriceOpen();
             double sl = pos.StopLoss();
             double tp = pos.TakeProfit();
             long type = pos.PositionType();
@@ -270,62 +354,21 @@ void CPcContractPanel::CheckTrailingAndBreakeven()
             
             if(type == POSITION_TYPE_BUY)
             {
-               // Breakeven
-               if(InpBreakevenActivation > 0)
-               {
-                  double be_price = open_price + (InpBreakevenOffset * point);
-                  if(tick.bid >= open_price + (InpBreakevenActivation * point))
-                  {
-                     if(sl < be_price)
-                        new_sl = NormalizeDouble(be_price, digits);
-                  }
-               }
+               double tr_sl = tick.bid - (tr_dist_points * point);
+               if(tr_sl > new_sl) new_sl = NormalizeDouble(tr_sl, digits);
                
-               // Trailing Stop
-               if(InpTrailingStart > 0)
-               {
-                  if(tick.bid >= open_price + (InpTrailingStart * point))
-                  {
-                     double tr_sl = tick.bid - (InpTrailingDistance * point);
-                     if(tr_sl > new_sl)
-                        new_sl = NormalizeDouble(tr_sl, digits);
-                  }
-               }
-               
-               // Validação de StopLevel
                if(new_sl > tick.bid - min_dist && new_sl != 0) 
                   new_sl = NormalizeDouble(tick.bid - min_dist, digits);
             }
             else if(type == POSITION_TYPE_SELL)
             {
-               // Breakeven
-               if(InpBreakevenActivation > 0)
-               {
-                  double be_price = open_price - (InpBreakevenOffset * point);
-                  if(tick.ask <= open_price - (InpBreakevenActivation * point))
-                  {
-                     if(sl > be_price || sl == 0)
-                        new_sl = NormalizeDouble(be_price, digits);
-                  }
-               }
+               double tr_sl = tick.ask + (tr_dist_points * point);
+               if(tr_sl < new_sl || new_sl == 0) new_sl = NormalizeDouble(tr_sl, digits);
                
-               // Trailing Stop
-               if(InpTrailingStart > 0)
-               {
-                  if(tick.ask <= open_price - (InpTrailingStart * point))
-                  {
-                     double tr_sl = tick.ask + (InpTrailingDistance * point);
-                     if(tr_sl < new_sl || new_sl == 0)
-                        new_sl = NormalizeDouble(tr_sl, digits);
-                  }
-               }
-               
-               // Validação de StopLevel
                if(new_sl < tick.ask + min_dist && new_sl != 0) 
                   new_sl = NormalizeDouble(tick.ask + min_dist, digits);
             }
             
-            // Modifica apenas se a diferença for maior que 10 pontos (evita spam no log e bloqueio da corretora)
             if(new_sl != 0 && MathAbs(new_sl - sl) >= (point * 10.0))
             {
                m_trade.PositionModify(pos.Ticket(), new_sl, tp);
@@ -340,9 +383,9 @@ CPcContractPanel ExtPanel;
 
 int OnInit()
 {
-   ExtPanel.InitTrade(); // Inicializa Magic Number
+   ExtPanel.InitTrade();
    
-   if(!ExtPanel.Create(0, "PCCONTRACT", 0, 50, 50, 350, 310))
+   if(!ExtPanel.Create(0, "PCCONTRACT", 0, 50, 50, 350, 380))
       return(INIT_FAILED);
       
    ExtPanel.Run();
@@ -369,6 +412,6 @@ void OnTimer()
 
 void OnTick()
 {
-   ExtPanel.CheckTrailingAndBreakeven();
+   ExtPanel.CheckTrailing();
    ExtPanel.CheckGlobalProfit();
 }
