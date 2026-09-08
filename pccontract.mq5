@@ -1,5 +1,5 @@
 #property copyright "PCCONTRACT"
-#property version   "1.01"
+#property version   "1.02"
 
 #include <Controls\Dialog.mqh>
 #include <Controls\Button.mqh>
@@ -7,6 +7,10 @@
 #include <Controls\Label.mqh>
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
+
+//--- Parâmetros de Entrada
+input group "Configurações Gerais"
+input ulong  InpMagicNumber = 123456;     // Magic Number
 
 //--- Estrutura do Painel PCCONTRACT
 class CPcContractPanel : public CAppDialog
@@ -35,11 +39,18 @@ public:
       ON_EVENT(ON_CLICK, m_btnCloseAll, OnClickCloseAll)
    EVENT_MAP_END(CAppDialog)
 
+   void InitTrade();
    void OnClickBuy();
    void OnClickSell();
    void OnClickCloseAll();
    void UpdateProfit();
 };
+
+void CPcContractPanel::InitTrade()
+{
+   m_trade.SetExpertMagicNumber(InpMagicNumber);
+   m_trade.SetDeviationInPoints(50);
+}
 
 //--- Desenhando a Interface
 bool CPcContractPanel::Create(const long chart, const string name, const int subwin, const int x1, const int y1, const int x2, const int y2)
@@ -55,7 +66,7 @@ bool CPcContractPanel::Create(const long chart, const string name, const int sub
 
    // Caixa de Lote
    if(!m_editLot.Create(chart, name+"_Lot", subwin, 120, 55, 180, 85)) return false;
-   m_editLot.Text("0.10");
+   m_editLot.Text("1.0"); // Padrão ajustado para B3
    Add(m_editLot);
 
    // Botão de Compra
@@ -72,7 +83,7 @@ bool CPcContractPanel::Create(const long chart, const string name, const int sub
 
    // Caixa de Stop Loss
    if(!m_editSL.Create(chart, name+"_SL", subwin, 20, 125, 110, 145)) return false;
-   m_editSL.Text("100");
+   m_editSL.Text("1000"); // Padrão maior para B3
    Add(m_editSL);
 
    // Rótulo Take Profit
@@ -82,7 +93,7 @@ bool CPcContractPanel::Create(const long chart, const string name, const int sub
 
    // Caixa de Take Profit
    if(!m_editTP.Create(chart, name+"_TP", subwin, 190, 125, 280, 145)) return false;
-   m_editTP.Text("200");
+   m_editTP.Text("2000"); // Padrão maior para B3
    Add(m_editTP);
 
    // Botão Fechar Tudo
@@ -153,7 +164,7 @@ void CPcContractPanel::OnClickCloseAll()
    {
       if(pos.SelectByIndex(i))
       {
-         if(pos.Symbol() == _Symbol)
+         if(pos.Symbol() == _Symbol && pos.Magic() == InpMagicNumber)
          {
             m_trade.PositionClose(pos.Ticket());
          }
@@ -170,7 +181,7 @@ void CPcContractPanel::UpdateProfit()
    {
       if(pos.SelectByIndex(i))
       {
-         if(pos.Symbol() == _Symbol)
+         if(pos.Symbol() == _Symbol && pos.Magic() == InpMagicNumber)
          {
             profit += pos.Profit() + pos.Swap() + pos.Commission();
          }
@@ -184,13 +195,12 @@ CPcContractPanel ExtPanel;
 
 int OnInit()
 {
-   // Cria a janela com o nome PCCONTRACT e tamanho ajustado
+   ExtPanel.InitTrade(); // Inicializa Magic Number
+   
    if(!ExtPanel.Create(0, "PCCONTRACT", 0, 50, 50, 350, 310))
       return(INIT_FAILED);
       
    ExtPanel.Run();
-   
-   // Timer de 1 segundo para atualizar o lucro
    EventSetTimer(1);
    
    return(INIT_SUCCEEDED);
