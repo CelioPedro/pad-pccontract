@@ -1,5 +1,5 @@
 #property copyright "PCCONTRACT"
-#property version   "1.02"
+#property version   "1.03"
 
 #include <Controls\Dialog.mqh>
 #include <Controls\Button.mqh>
@@ -248,6 +248,13 @@ void CPcContractPanel::CheckTrailingAndBreakeven()
    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
    int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
    
+   // Calcular distância mínima permitida pela corretora
+   int stoplevel = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
+   int min_dist_points = MathMax(stoplevel, spread * 2);
+   if(min_dist_points < 50) min_dist_points = 50; // Margem de segurança mínima
+   double min_dist = min_dist_points * point;
+   
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       if(pos.SelectByIndex(i))
@@ -260,7 +267,6 @@ void CPcContractPanel::CheckTrailingAndBreakeven()
             long type = pos.PositionType();
             
             double new_sl = sl;
-            bool modify = false;
             
             if(type == POSITION_TYPE_BUY)
             {
@@ -271,10 +277,7 @@ void CPcContractPanel::CheckTrailingAndBreakeven()
                   if(tick.bid >= open_price + (InpBreakevenActivation * point))
                   {
                      if(sl < be_price)
-                     {
                         new_sl = NormalizeDouble(be_price, digits);
-                        modify = true;
-                     }
                   }
                }
                
@@ -284,13 +287,14 @@ void CPcContractPanel::CheckTrailingAndBreakeven()
                   if(tick.bid >= open_price + (InpTrailingStart * point))
                   {
                      double tr_sl = tick.bid - (InpTrailingDistance * point);
-                     if(tr_sl > new_sl) // move apenas para proteger mais lucro
-                     {
+                     if(tr_sl > new_sl)
                         new_sl = NormalizeDouble(tr_sl, digits);
-                        modify = true;
-                     }
                   }
                }
+               
+               // Validação de StopLevel
+               if(new_sl > tick.bid - min_dist && new_sl != 0) 
+                  new_sl = NormalizeDouble(tick.bid - min_dist, digits);
             }
             else if(type == POSITION_TYPE_SELL)
             {
@@ -301,10 +305,7 @@ void CPcContractPanel::CheckTrailingAndBreakeven()
                   if(tick.ask <= open_price - (InpBreakevenActivation * point))
                   {
                      if(sl > be_price || sl == 0)
-                     {
                         new_sl = NormalizeDouble(be_price, digits);
-                        modify = true;
-                     }
                   }
                }
                
@@ -315,15 +316,17 @@ void CPcContractPanel::CheckTrailingAndBreakeven()
                   {
                      double tr_sl = tick.ask + (InpTrailingDistance * point);
                      if(tr_sl < new_sl || new_sl == 0)
-                     {
                         new_sl = NormalizeDouble(tr_sl, digits);
-                        modify = true;
-                     }
                   }
                }
+               
+               // Validação de StopLevel
+               if(new_sl < tick.ask + min_dist && new_sl != 0) 
+                  new_sl = NormalizeDouble(tick.ask + min_dist, digits);
             }
             
-            if(modify)
+            // Modifica apenas se a diferença for maior que 10 pontos (evita spam no log e bloqueio da corretora)
+            if(new_sl != 0 && MathAbs(new_sl - sl) >= (point * 10.0))
             {
                m_trade.PositionModify(pos.Ticket(), new_sl, tp);
             }
