@@ -425,7 +425,7 @@ void CPcContractPanel::DrawHLine(string name, double price, color clr, string te
       ObjectSetInteger(0, name, OBJPROP_BACK, false);
       ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
       ObjectSetString(0, name, OBJPROP_TEXT, text);
-      ObjectSetInteger(0, name, OBJPROP_TOOLTIP, text);
+      ObjectSetString(0, name, OBJPROP_TOOLTIP, text);
    }
    else
    {
