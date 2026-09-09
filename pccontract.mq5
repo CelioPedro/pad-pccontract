@@ -1,5 +1,5 @@
 #property copyright "PCCONTRACT"
-#property version   "1.06"
+#property version   "1.07"
 
 #include <Controls\Dialog.mqh>
 #include <Controls\Button.mqh>
@@ -35,8 +35,6 @@ private:
    CButton m_btnTrailing;
    
    CLabel  m_lblProfit;
-   CLabel  m_lblSpread;
-   CLabel  m_lblTime;
 
    CTrade  m_trade;       
    bool    m_trailingActive;
@@ -64,7 +62,6 @@ public:
    void OnClickTrailing();
    
    void UpdateProfit();
-   void UpdateClockAndSpread();
    void CheckGlobalProfit();
    void CheckTrailing();
    
@@ -73,6 +70,10 @@ public:
    void DrawPreviewLines(long type);
    void ClearPreviewLines();
    void DrawHLine(string name, double price, color clr, string text);
+   
+   void CreateFloatingLabels();
+   void DeleteFloatingLabels();
+   void UpdateClockAndSpread();
 };
 
 void CPcContractPanel::InitTrade()
@@ -159,18 +160,87 @@ bool CPcContractPanel::Create(const long chart, const string name, const int sub
    if(!m_lblProfit.Create(chart, name+"_lblProfit", subwin, 20, 290, 280, 310)) return false;
    m_lblProfit.Text("Lucro Flutuante: 0.00");
    Add(m_lblProfit);
-   
-   // Rótulo Spread
-   if(!m_lblSpread.Create(chart, name+"_lblSpread", subwin, 20, 320, 140, 340)) return false;
-   m_lblSpread.Text("Spread: 0");
-   Add(m_lblSpread);
-
-   // Rótulo Tempo Vela
-   if(!m_lblTime.Create(chart, name+"_lblTime", subwin, 150, 320, 280, 340)) return false;
-   m_lblTime.Text("Vela: 00:00");
-   Add(m_lblTime);
 
    return(true);
+}
+
+//--- Elementos Flutuantes no Gráfico (Fora do Painel)
+void CPcContractPanel::CreateFloatingLabels()
+{
+   // Spread Label
+   if(ObjectFind(0, "FLOAT_SPREAD") < 0)
+   {
+      ObjectCreate(0, "FLOAT_SPREAD", OBJ_RECTANGLE_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_CORNER, CORNER_RIGHT_UP);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_XDISTANCE, 130);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_YDISTANCE, 20);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_XSIZE, 90);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_YSIZE, 20);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_BGCOLOR, clrBlack);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_BORDER_COLOR, clrGray);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_COLOR, clrGreenYellow);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_FONTSIZE, 10);
+      ObjectSetString(0, "FLOAT_SPREAD", OBJPROP_FONT, "Arial");
+      ObjectSetString(0, "FLOAT_SPREAD", OBJPROP_TEXT, "Spread: 0p");
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_HIDDEN, true);
+   }
+   
+   // Time Label
+   if(ObjectFind(0, "FLOAT_TIME") < 0)
+   {
+      ObjectCreate(0, "FLOAT_TIME", OBJ_RECTANGLE_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_CORNER, CORNER_RIGHT_UP);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_XDISTANCE, 30);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_YDISTANCE, 20);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_XSIZE, 90);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_YSIZE, 20);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_BGCOLOR, clrBlack);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_BORDER_COLOR, clrGray);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_COLOR, clrYellow);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_FONTSIZE, 10);
+      ObjectSetString(0, "FLOAT_TIME", OBJPROP_FONT, "Arial");
+      ObjectSetString(0, "FLOAT_TIME", OBJPROP_TEXT, "-00:00:00");
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_HIDDEN, true);
+   }
+}
+
+void CPcContractPanel::DeleteFloatingLabels()
+{
+   ObjectDelete(0, "FLOAT_SPREAD");
+   ObjectDelete(0, "FLOAT_TIME");
+}
+
+void CPcContractPanel::UpdateClockAndSpread()
+{
+   // Atualizar Spread
+   int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
+   ObjectSetString(0, "FLOAT_SPREAD", OBJPROP_TEXT, StringFormat("Spread: %dp", spread));
+   
+   // Atualizar Tempo da Vela
+   datetime time_arr[];
+   if(CopyTime(_Symbol, PERIOD_CURRENT, 0, 1, time_arr) > 0)
+   {
+      datetime current_time = TimeCurrent();
+      datetime candle_time = time_arr[0];
+      int period_sec = PeriodSeconds();
+      int remaining = (int)(candle_time + period_sec - current_time);
+      
+      if(remaining < 0) remaining = 0;
+      
+      int h = remaining / 3600;
+      int m = (remaining % 3600) / 60;
+      int s = remaining % 60;
+      
+      string time_str = "";
+      if(h > 0)
+         time_str = StringFormat("-%02d:%02d:%02d", h, m, s);
+      else
+         time_str = StringFormat("-00:%02d:%02d", m, s);
+         
+      ObjectSetString(0, "FLOAT_TIME", OBJPROP_TEXT, time_str);
+   }
 }
 
 //--- Execução de Ordens
@@ -304,35 +374,6 @@ void CPcContractPanel::UpdateProfit()
       }
    }
    m_lblProfit.Text("Lucro Flutuante: " + DoubleToString(profit, 2));
-}
-
-//--- Atualizar Spread e Tempo da Vela
-void CPcContractPanel::UpdateClockAndSpread()
-{
-   // Atualizar Spread
-   int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
-   m_lblSpread.Text(StringFormat("Spread: %d pts", spread));
-   
-   // Atualizar Tempo da Vela
-   datetime time_arr[];
-   if(CopyTime(_Symbol, PERIOD_CURRENT, 0, 1, time_arr) > 0)
-   {
-      datetime current_time = TimeCurrent();
-      datetime candle_time = time_arr[0];
-      int period_sec = PeriodSeconds();
-      int remaining = (int)(candle_time + period_sec - current_time);
-      
-      if(remaining < 0) remaining = 0;
-      
-      int h = remaining / 3600;
-      int m = (remaining % 3600) / 60;
-      int s = remaining % 60;
-      
-      if(h > 0)
-         m_lblTime.Text(StringFormat("Vela: %02d:%02d:%02d", h, m, s));
-      else
-         m_lblTime.Text(StringFormat("Vela: %02d:%02d", m, s));
-   }
 }
 
 //--- Checar Meta Global
@@ -547,9 +588,10 @@ int OnInit()
    ChartSetInteger(0, CHART_SHOW_OBJECT_DESCR, true);
    
    ExtPanel.InitTrade();
+   ExtPanel.CreateFloatingLabels();
    
-   // Aumentei o y2 para 400 para comportar os novos rótulos na base
-   if(!ExtPanel.Create(0, "PCCONTRACT", 0, 50, 50, 350, 400))
+   // Retorna o tamanho original do painel
+   if(!ExtPanel.Create(0, "PCCONTRACT", 0, 50, 50, 350, 380))
       return(INIT_FAILED);
       
    ExtPanel.Run();
@@ -561,6 +603,7 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    ExtPanel.ClearPreviewLines();
+   ExtPanel.DeleteFloatingLabels();
    EventKillTimer();
    ExtPanel.Destroy(reason);
 }
