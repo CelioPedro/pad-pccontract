@@ -1,5 +1,5 @@
 #property copyright "PCCONTRACT"
-#property version   "1.05"
+#property version   "1.06"
 
 #include <Controls\Dialog.mqh>
 #include <Controls\Button.mqh>
@@ -35,6 +35,8 @@ private:
    CButton m_btnTrailing;
    
    CLabel  m_lblProfit;
+   CLabel  m_lblSpread;
+   CLabel  m_lblTime;
 
    CTrade  m_trade;       
    bool    m_trailingActive;
@@ -62,6 +64,7 @@ public:
    void OnClickTrailing();
    
    void UpdateProfit();
+   void UpdateClockAndSpread();
    void CheckGlobalProfit();
    void CheckTrailing();
    
@@ -156,6 +159,16 @@ bool CPcContractPanel::Create(const long chart, const string name, const int sub
    if(!m_lblProfit.Create(chart, name+"_lblProfit", subwin, 20, 290, 280, 310)) return false;
    m_lblProfit.Text("Lucro Flutuante: 0.00");
    Add(m_lblProfit);
+   
+   // Rótulo Spread
+   if(!m_lblSpread.Create(chart, name+"_lblSpread", subwin, 20, 320, 140, 340)) return false;
+   m_lblSpread.Text("Spread: 0");
+   Add(m_lblSpread);
+
+   // Rótulo Tempo Vela
+   if(!m_lblTime.Create(chart, name+"_lblTime", subwin, 150, 320, 280, 340)) return false;
+   m_lblTime.Text("Vela: 00:00");
+   Add(m_lblTime);
 
    return(true);
 }
@@ -293,6 +306,35 @@ void CPcContractPanel::UpdateProfit()
    m_lblProfit.Text("Lucro Flutuante: " + DoubleToString(profit, 2));
 }
 
+//--- Atualizar Spread e Tempo da Vela
+void CPcContractPanel::UpdateClockAndSpread()
+{
+   // Atualizar Spread
+   int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
+   m_lblSpread.Text(StringFormat("Spread: %d pts", spread));
+   
+   // Atualizar Tempo da Vela
+   datetime time_arr[];
+   if(CopyTime(_Symbol, PERIOD_CURRENT, 0, 1, time_arr) > 0)
+   {
+      datetime current_time = TimeCurrent();
+      datetime candle_time = time_arr[0];
+      int period_sec = PeriodSeconds();
+      int remaining = (int)(candle_time + period_sec - current_time);
+      
+      if(remaining < 0) remaining = 0;
+      
+      int h = remaining / 3600;
+      int m = (remaining % 3600) / 60;
+      int s = remaining % 60;
+      
+      if(h > 0)
+         m_lblTime.Text(StringFormat("Vela: %02d:%02d:%02d", h, m, s));
+      else
+         m_lblTime.Text(StringFormat("Vela: %02d:%02d", m, s));
+   }
+}
+
 //--- Checar Meta Global
 void CPcContractPanel::CheckGlobalProfit()
 {
@@ -389,8 +431,6 @@ void CPcContractPanel::CheckTrailing()
 //--- Desenho e Hover
 void CPcContractPanel::CheckHover(int x, int y)
 {
-   // Coordenadas relativas ao client area. CWnd Left/Right são relativas à janela pai
-   // CAppDialog mapeia os eventos se o mouse estiver sobre o painel.
    bool hover_buy = (x >= m_btnBuy.Left() && x <= m_btnBuy.Right() && y >= m_btnBuy.Top() && y <= m_btnBuy.Bottom());
    bool hover_sell = (x >= m_btnSell.Left() && x <= m_btnSell.Right() && y >= m_btnSell.Top() && y <= m_btnSell.Bottom());
    
@@ -508,7 +548,8 @@ int OnInit()
    
    ExtPanel.InitTrade();
    
-   if(!ExtPanel.Create(0, "PCCONTRACT", 0, 50, 50, 350, 380))
+   // Aumentei o y2 para 400 para comportar os novos rótulos na base
+   if(!ExtPanel.Create(0, "PCCONTRACT", 0, 50, 50, 350, 400))
       return(INIT_FAILED);
       
    ExtPanel.Run();
@@ -530,8 +571,6 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
    
    if(id == CHARTEVENT_MOUSE_MOVE)
    {
-      // Em CAppDialog, os cliques e mouses são relativos ao cliente ou ao gráfico.
-      // CWnd (base) usa coordenadas absolutas para seus Left() e Right() se estiver visível.
       ExtPanel.CheckHover((int)lparam, (int)dparam);
    }
 }
@@ -539,6 +578,7 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
 void OnTimer()
 {
    ExtPanel.UpdateProfit();
+   ExtPanel.UpdateClockAndSpread();
 }
 
 void OnTick()
