@@ -171,7 +171,7 @@ void CPcContractPanel::CreateFloatingLabels()
    if(ObjectFind(0, "FLOAT_SPREAD") < 0)
    {
       ObjectCreate(0, "FLOAT_SPREAD", OBJ_RECTANGLE_LABEL, 0, 0, 0);
-      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_CORNER, CORNER_RIGHT_UP);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_CORNER, CORNER_RIGHT_UPPER);
       ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_XDISTANCE, 130);
       ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_YDISTANCE, 20);
       ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_XSIZE, 90);
@@ -182,15 +182,16 @@ void CPcContractPanel::CreateFloatingLabels()
       ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_FONTSIZE, 10);
       ObjectSetString(0, "FLOAT_SPREAD", OBJPROP_FONT, "Arial");
       ObjectSetString(0, "FLOAT_SPREAD", OBJPROP_TEXT, "Spread: 0p");
-      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_HIDDEN, true);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_SELECTABLE, true);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_HIDDEN, false);
+      ObjectSetInteger(0, "FLOAT_SPREAD", OBJPROP_ZORDER, 10);
    }
    
    // Time Label
    if(ObjectFind(0, "FLOAT_TIME") < 0)
    {
       ObjectCreate(0, "FLOAT_TIME", OBJ_RECTANGLE_LABEL, 0, 0, 0);
-      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_CORNER, CORNER_RIGHT_UP);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_CORNER, CORNER_RIGHT_UPPER);
       ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_XDISTANCE, 30);
       ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_YDISTANCE, 20);
       ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_XSIZE, 90);
@@ -201,8 +202,9 @@ void CPcContractPanel::CreateFloatingLabels()
       ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_FONTSIZE, 10);
       ObjectSetString(0, "FLOAT_TIME", OBJPROP_FONT, "Arial");
       ObjectSetString(0, "FLOAT_TIME", OBJPROP_TEXT, "-00:00:00");
-      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_HIDDEN, true);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_SELECTABLE, true);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_HIDDEN, false);
+      ObjectSetInteger(0, "FLOAT_TIME", OBJPROP_ZORDER, 10);
    }
 }
 
