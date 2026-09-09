@@ -635,4 +635,5 @@ void OnTick()
    ExtPanel.CheckTrailing();
    ExtPanel.CheckGlobalProfit();
    ExtPanel.UpdateHoverPreview();
+   ExtPanel.UpdateClockAndSpread();
 }
